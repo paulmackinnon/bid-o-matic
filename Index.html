@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Bid-O-Matic — Springfield auction fee calculator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'><circle cx='13' cy='13' r='11' fill='%238a5a2b'/><circle cx='13' cy='13' r='10' fill='%23ff8ac2'/><circle cx='13' cy='13' r='4' fill='%236fc9f5'/></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+<style>html,body{margin:0;padding:0}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useEffect } = React;
+
+// ---- Springfield palette -------------------------------------------
+const T = {
+  sky: "#6fc9f5",
+  yellow: "#ffd90f",
+  yellowDark: "#e6b800",
+  pink: "#ff8ac2", // donut frosting
+  pinkDark: "#e0559c",
+  brown: "#8a5a2b", // donut dough
+  red: "#d6291e", // Duff-ish red
+  blue: "#1c6ea4",
+  cream: "#fff8e1",
+  ink: "#2b1d0e",
+  green: "#7bc043",
+  display: "'Luckiest Guy', 'Comic Sans MS', cursive",
+  body: "'Nunito', 'Segoe UI', system-ui, sans-serif",
+};
+
+const gbp = (n) =>
+  new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    minimumFractionDigits: 2,
+  }).format(isFinite(n) ? n : 0);
+
+// ---- Sound engine (all synthesized, no samples) ---------------------
+function useSounds(muted) {
+  const ctxRef = useRef(null);
+  const ctx = () => {
+    if (!ctxRef.current) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctxRef.current = new AC();
+    }
+    if (ctxRef.current.state === "suspended") ctxRef.current.resume();
+    return ctxRef.current;
+  };
+
+  const blip = (freq, t0, dur, type = "square", vol = 0.12) => {
+    const c = ctx();
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, c.currentTime + t0);
+    g.gain.setValueAtTime(0, c.currentTime + t0);
+    g.gain.linearRampToValueAtTime(vol, c.currentTime + t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t0 + dur);
+    o.connect(g).connect(c.destination);
+    o.start(c.currentTime + t0);
+    o.stop(c.currentTime + t0 + dur + 0.05);
+  };
+
+  return {
+    // springy cartoon boing for toggles
+    boing: () => {
+      if (muted) return;
+      const c = ctx();
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(320, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(90, c.currentTime + 0.22);
+      g.gain.setValueAtTime(0.16, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.25);
+      o.connect(g).connect(c.destination);
+      o.start();
+      o.stop(c.currentTime + 0.3);
+    },
+    // "woo-hoo!" rising two-note whoop
+    woohoo: () => {
+      if (muted) return;
+      blip(523, 0, 0.12, "square", 0.1);
+      blip(784, 0.1, 0.2, "square", 0.12);
+    },
+    // "d'oh" — short falling grumble
+    doh: () => {
+      if (muted) return;
+      const c = ctx();
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(220, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(110, c.currentTime + 0.28);
+      g.gain.setValueAtTime(0.12, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.3);
+      o.connect(g).connect(c.destination);
+      o.start();
+      o.stop(c.currentTime + 0.35);
+    },
+    // cash register cha-ching
+    chaching: () => {
+      if (muted) return;
+      blip(1319, 0, 0.08, "square", 0.08);
+      blip(1568, 0.07, 0.08, "square", 0.08);
+      blip(2093, 0.14, 0.3, "triangle", 0.12);
+    },
+    // typing tick
+    tick: () => {
+      if (muted) return;
+      blip(880, 0, 0.04, "square", 0.04);
+    },
+  };
+}
+
+// ---- Donut toggle ----------------------------------------------------
+function DonutToggle({ on, onChange, label, snd }) {
+  return (
+    <button
+      onClick={() => {
+        onChange(!on);
+        snd.boing();
+      }}
+      aria-pressed={on}
+      aria-label={label}
+      title={on ? "VAT on (sprinkles!)" : "VAT off (plain donut)"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        background: on ? "#fff0f7" : "#f2ede2",
+        border: `3px solid ${on ? T.pinkDark : "#c9bfa8"}`,
+        borderRadius: 999,
+        padding: "4px 12px 4px 6px",
+        cursor: "pointer",
+        transition: "transform 0.1s ease, background 0.15s ease",
+        fontFamily: T.body,
+        fontWeight: 800,
+        fontSize: 11,
+        color: on ? T.pinkDark : "#8d8368",
+      }}
+      onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.93)")}
+      onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+      onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+    >
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <circle cx="13" cy="13" r="11" fill={T.brown} />
+        <circle
+          cx="13"
+          cy="13"
+          r="10"
+          fill={on ? T.pink : "#c99e63"}
+          style={{ transition: "fill 0.15s ease" }}
+        />
+        <circle cx="13" cy="13" r="4" fill={on ? "#fff0f7" : "#f2ede2"} />
+        {on && (
+          <>
+            <rect x="7" y="7" width="3" height="1.4" rx="0.7" fill="#3ac0ff" transform="rotate(30 8 7)" />
+            <rect x="17" y="8" width="3" height="1.4" rx="0.7" fill={T.yellow} transform="rotate(-20 18 8)" />
+            <rect x="6" y="16" width="3" height="1.4" rx="0.7" fill={T.green} transform="rotate(-40 7 16)" />
+            <rect x="17" y="17" width="3" height="1.4" rx="0.7" fill="#fff" transform="rotate(15 18 17)" />
+            <rect x="12" y="4.5" width="3" height="1.4" rx="0.7" fill={T.red} transform="rotate(60 13 5)" />
+          </>
+        )}
+      </svg>
+      VAT {on ? "ON" : "OFF"}
+    </button>
+  );
+}
+
+// ---- Input field -----------------------------------------------------
+function NumField({ label, value, onChange, prefix, suffix, step = 1, snd, readOnly }) {
+  return (
+    <label style={{ display: "block", minWidth: 0 }}>
+      <span
+        style={{
+          display: "block",
+          fontFamily: T.body,
+          fontWeight: 900,
+          fontSize: 12,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: T.blue,
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          display: "flex",
+          alignItems: "center",
+          background: "#fff",
+          border: `3px solid ${T.ink}`,
+          borderRadius: 10,
+          padding: "0 10px",
+          boxShadow: "3px 3px 0 rgba(43,29,14,0.25)",
+          boxSizing: "border-box",
+        }}
+      >
+        {prefix && (
+          <span style={{ color: T.brown, fontWeight: 900, fontSize: 15, marginRight: 4 }}>
+            {prefix}
+          </span>
+        )}
+        <input
+          type="number"
+          step={step}
+          min="0"
+          value={value}
+          readOnly={readOnly}
+          onChange={(e) => {
+            onChange(e.target.value);
+            snd.tick();
+          }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: T.ink,
+            fontFamily: T.body,
+            fontWeight: 800,
+            fontSize: 17,
+            padding: "9px 0",
+          }}
+        />
+        {suffix && (
+          <span style={{ color: T.brown, fontWeight: 900, fontSize: 15, marginLeft: 4 }}>
+            {suffix}
+          </span>
+        )}
+      </span>
+    </label>
+  );
+}
+
+function FeeRow({ color, name, base, vat, showVat }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "10px 1fr auto",
+        gap: 12,
+        alignItems: "center",
+        padding: "10px 0",
+        borderBottom: `2px dashed ${T.yellowDark}`,
+      }}
+    >
+      <div
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          background: color,
+          border: `2px solid ${T.ink}`,
+        }}
+      />
+      <div>
+        <div style={{ fontFamily: T.body, fontWeight: 900, fontSize: 14, color: T.ink }}>
+          {name}
+        </div>
+        {showVat && (
+          <div style={{ fontFamily: T.body, fontWeight: 700, fontSize: 12, color: T.pinkDark }}>
+            + {gbp(vat)} VAT
+          </div>
+        )}
+      </div>
+      <div style={{ fontFamily: T.body, fontWeight: 900, fontSize: 16, color: T.ink }}>
+        {gbp(base)}
+      </div>
+    </div>
+  );
+}
+
+// ---- Main app ---------------------------------------------------------
+function SpringfieldBidOMatic() {
+  const [mode, setMode] = useState("forward");
+  const [hammer, setHammer] = useState("100");
+  const [budget, setBudget] = useState("500");
+  const [bpPct, setBpPct] = useState("20");
+  const [platPct, setPlatPct] = useState("4.95");
+  const [flatFee, setFlatFee] = useState("0");
+  const [vatRate, setVatRate] = useState("20");
+  const [vatHammer, setVatHammer] = useState(false);
+  const [vatBp, setVatBp] = useState(true);
+  const [vatPlat, setVatPlat] = useState(true);
+  const [vatFlat, setVatFlat] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [quote, setQuote] = useState(0);
+
+  const snd = useSounds(muted);
+
+  const r = (parseFloat(vatRate) || 0) / 100;
+  const bp = (parseFloat(bpPct) || 0) / 100;
+  const pf = (parseFloat(platPct) || 0) / 100;
+  const flat = parseFloat(flatFee) || 0;
+
+  const multiplier =
+    1 * (1 + (vatHammer ? r : 0)) +
+    bp * (1 + (vatBp ? r : 0)) +
+    pf * (1 + (vatPlat ? r : 0));
+  const flatTotal = flat * (1 + (vatFlat ? r : 0));
+
+  const calc = useMemo(() => {
+    let H;
+    if (mode === "forward") {
+      H = parseFloat(hammer) || 0;
+    } else {
+      const B = parseFloat(budget) || 0;
+      H = multiplier > 0 ? Math.max(0, (B - flatTotal) / multiplier) : 0;
+    }
+    const bpAmt = H * bp;
+    const platAmt = H * pf;
+    const vHammer = vatHammer ? H * r : 0;
+    const vBp = vatBp ? bpAmt * r : 0;
+    const vPlat = vatPlat ? platAmt * r : 0;
+    const vFlat = vatFlat ? flat * r : 0;
+    const totalVat = vHammer + vBp + vPlat + vFlat;
+    const total = H + bpAmt + platAmt + flat + totalVat;
+    return { H, bpAmt, platAmt, vFlat, vHammer, vBp, vPlat, totalVat, total };
+  }, [mode, hammer, budget, bp, pf, flat, r, vatHammer, vatBp, vatPlat, vatFlat, multiplier, flatTotal]);
+
+  const feesOnTop = calc.total - calc.H;
+  const feesPct = calc.H > 0 ? (feesOnTop / calc.H) * 100 : 0;
+
+  // Cha-ching when the total settles (debounced)
+  const totalRef = useRef(calc.total);
+  useEffect(() => {
+    if (totalRef.current === calc.total) return;
+    totalRef.current = calc.total;
+    const id = setTimeout(() => {
+      if (feesPct > 40) snd.doh();
+      else snd.chaching();
+      setQuote((q) => (q + 1) % QUOTES.length);
+    }, 700);
+    return () => clearTimeout(id);
+  }, [calc.total]); // eslint-disable-line
+
+  const QUOTES = [
+    "Mmm… fees.",
+    "Everything's coming up you!",
+    "Money can be exchanged for goods and services.",
+    "Trying is the first step towards bidding.",
+    "Shut up and take my money!",
+    "It's funny 'cause it's fees.",
+  ];
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: `linear-gradient(180deg, ${T.sky} 0%, #a8e0fb 60%, ${T.yellow} 60.2%, ${T.yellow} 100%)`,
+        fontFamily: T.body,
+        color: T.ink,
+        padding: "26px 14px 60px",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Nunito:wght@700;800;900&display=swap');
+        input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
+        @keyframes drift { from { transform: translateX(-10%); } to { transform: translateX(110vw); } }
+        @keyframes pop { 0% { transform: scale(0.96); } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
+        @keyframes wobble { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+        @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+      `}</style>
+
+      {/* drifting clouds */}
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 20 + i * 46,
+            left: 0,
+            width: 110 - i * 20,
+            height: 34,
+            background: "#fff",
+            borderRadius: 999,
+            boxShadow: "22px -10px 0 -4px #fff, -20px -8px 0 -6px #fff",
+            opacity: 0.9,
+            animation: `drift ${60 + i * 25}s linear infinite`,
+            animationDelay: `${-i * 20}s`,
+            pointerEvents: "none",
+          }}
+        />
+      ))}
+
+      <div style={{ maxWidth: 880, margin: "0 auto", position: "relative" }}>
+        {/* Header */}
+        <header style={{ textAlign: "center", marginBottom: 20 }}>
+          <h1
+            style={{
+              fontFamily: T.display,
+              fontSize: "clamp(34px, 7vw, 56px)",
+              margin: 0,
+              color: T.yellow,
+              WebkitTextStroke: `2.5px ${T.ink}`,
+              textShadow: `4px 4px 0 ${T.red}`,
+              letterSpacing: "0.02em",
+              lineHeight: 1.05,
+            }}
+          >
+            The Bid-O-Matic
+          </h1>
+          <p
+            style={{
+              display: "inline-block",
+              background: T.red,
+              color: "#fff",
+              fontWeight: 900,
+              fontSize: 13,
+              padding: "4px 14px",
+              borderRadius: 999,
+              border: `3px solid ${T.ink}`,
+              margin: "8px 0 0",
+              transform: "rotate(-1.5deg)",
+            }}
+          >
+            Springfield's #1 auction fee calculator · est. 1989
+          </p>
+        </header>
+
+        {/* Mode + mute */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            justifyContent: "center",
+            marginBottom: 18,
+          }}
+        >
+          {[
+            ["forward", "What'll it cost me?"],
+            ["budget", "How much can I bid?"],
+          ].map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => {
+                setMode(m);
+                snd.woohoo();
+              }}
+              style={{
+                fontFamily: T.display,
+                fontSize: 16,
+                padding: "10px 18px 7px",
+                background: mode === m ? T.pink : "#fff",
+                color: T.ink,
+                border: `3px solid ${T.ink}`,
+                borderRadius: 12,
+                boxShadow: mode === m ? `3px 3px 0 ${T.ink}` : "2px 2px 0 rgba(43,29,14,0.3)",
+                cursor: "pointer",
+                transform: mode === m ? "translateY(-2px)" : "none",
+                transition: "all 0.12s ease",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={() => setMuted((m) => !m)}
+            aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+            style={{
+              fontSize: 18,
+              padding: "8px 14px",
+              background: "#fff",
+              border: `3px solid ${T.ink}`,
+              borderRadius: 12,
+              cursor: "pointer",
+              boxShadow: "2px 2px 0 rgba(43,29,14,0.3)",
+            }}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            gap: 18,
+          }}
+        >
+          {/* ---- Kwik-E-Sums controls ---- */}
+          <section
+            style={{
+              background: T.cream,
+              border: `4px solid ${T.ink}`,
+              borderRadius: 16,
+              padding: 18,
+              boxShadow: `6px 6px 0 rgba(43,29,14,0.3)`,
+            }}
+          >
+            <h2
+              style={{
+                fontFamily: T.display,
+                fontSize: 20,
+                color: T.blue,
+                margin: "0 0 14px",
+              }}
+            >
+              Kwik-E-Sums
+            </h2>
+
+            <div style={{ display: "grid", gap: 15 }}>
+              {mode === "forward" ? (
+                <NumField label="Hammer price" prefix="£" value={hammer} onChange={setHammer} snd={snd} />
+              ) : (
+                <NumField label="Total budget (all-in)" prefix="£" value={budget} onChange={setBudget} snd={snd} />
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
+                <NumField label="Buyer's premium" suffix="%" step={0.5} value={bpPct} onChange={setBpPct} snd={snd} />
+                <DonutToggle on={vatBp} onChange={setVatBp} label="VAT on buyer's premium" snd={snd} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
+                <NumField label="Internet / platform fee" suffix="%" step={0.05} value={platPct} onChange={setPlatPct} snd={snd} />
+                <DonutToggle on={vatPlat} onChange={setVatPlat} label="VAT on platform fee" snd={snd} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
+                <NumField label="Flat lot fee" prefix="£" step={0.5} value={flatFee} onChange={setFlatFee} snd={snd} />
+                <DonutToggle on={vatFlat} onChange={setVatFlat} label="VAT on flat fee" snd={snd} />
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  gap: 10,
+                  alignItems: "end",
+                  paddingTop: 12,
+                  borderTop: `3px dashed ${T.yellowDark}`,
+                }}
+              >
+                <NumField
+                  label="VAT-able lot? (hammer)"
+                  prefix="£"
+                  value={mode === "forward" ? hammer : calc.H.toFixed(2)}
+                  onChange={mode === "forward" ? setHammer : () => {}}
+                  readOnly={mode === "budget"}
+                  snd={snd}
+                />
+                <DonutToggle on={vatHammer} onChange={setVatHammer} label="VAT on hammer price" snd={snd} />
+              </div>
+
+              <div style={{ maxWidth: 150 }}>
+                <NumField label="VAT rate" suffix="%" step={0.5} value={vatRate} onChange={setVatRate} snd={snd} />
+              </div>
+            </div>
+          </section>
+
+          {/* ---- The Damage ---- */}
+          <section
+            style={{
+              background: "#fff",
+              border: `4px solid ${T.ink}`,
+              borderRadius: 16,
+              padding: 18,
+              boxShadow: `6px 6px 0 rgba(43,29,14,0.3)`,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <h2 style={{ fontFamily: T.display, fontSize: 20, color: T.red, margin: "0 0 4px" }}>
+              The Damage
+            </h2>
+
+            <FeeRow
+              color={T.yellow}
+              name={mode === "budget" ? "Max hammer bid" : "Hammer price"}
+              base={calc.H}
+              vat={calc.vHammer}
+              showVat={vatHammer}
+            />
+            <FeeRow color={T.blue} name={`Buyer's premium (${bpPct || 0}%)`} base={calc.bpAmt} vat={calc.vBp} showVat={vatBp} />
+            <FeeRow color={T.green} name={`Platform fee (${platPct || 0}%)`} base={calc.platAmt} vat={calc.vPlat} showVat={vatPlat} />
+            {flat > 0 && (
+              <FeeRow color={T.brown} name="Flat lot fee" base={flat} vat={calc.vFlat} showVat={vatFlat} />
+            )}
+            <FeeRow color={T.pink} name="Total VAT" base={calc.totalVat} showVat={false} />
+
+            {/* Total */}
+            <div
+              key={calc.total.toFixed(2)}
+              style={{
+                marginTop: 16,
+                padding: "14px 16px",
+                borderRadius: 14,
+                background: T.yellow,
+                border: `4px solid ${T.ink}`,
+                animation: "pop 0.35s ease",
+              }}
+            >
+              <div style={{ fontFamily: T.display, fontSize: 15, color: T.ink }}>
+                {mode === "budget" ? "All-in at your budget" : "Grand total, man"}
+              </div>
+              <div
+                style={{
+                  fontFamily: T.display,
+                  fontSize: 40,
+                  color: T.ink,
+                  lineHeight: 1.1,
+                  textShadow: "2px 2px 0 #fff",
+                }}
+              >
+                {gbp(calc.total)}
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 13, color: T.brown, marginTop: 2 }}>
+                fees add {gbp(feesOnTop)} · +{feesPct.toFixed(1)}% on hammer
+                {feesPct > 40 ? " … d'oh!" : ""}
+              </div>
+            </div>
+
+            {mode === "budget" && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "12px 16px",
+                  borderRadius: 14,
+                  background: T.red,
+                  border: `4px solid ${T.ink}`,
+                  color: "#fff",
+                  animation: "wobble 3s ease-in-out infinite",
+                }}
+              >
+                <div style={{ fontFamily: T.display, fontSize: 14 }}>
+                  STOP BIDDING AT
+                </div>
+                <div style={{ fontFamily: T.display, fontSize: 28, textShadow: `2px 2px 0 ${T.ink}` }}>
+                  {gbp(calc.H)}
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.9 }}>
+                  One more bid and you're eating the couch cushions.
+                </div>
+              </div>
+            )}
+
+            {/* speech bubble */}
+            <div style={{ marginTop: "auto", paddingTop: 18 }}>
+              <div
+                style={{
+                  position: "relative",
+                  background: T.cream,
+                  border: `3px solid ${T.ink}`,
+                  borderRadius: 14,
+                  padding: "10px 14px",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  fontStyle: "italic",
+                }}
+              >
+                “{QUOTES[quote]}”
+                <span
+                  style={{
+                    position: "absolute",
+                    bottom: -12,
+                    left: 26,
+                    width: 0,
+                    height: 0,
+                    borderLeft: "10px solid transparent",
+                    borderRight: "10px solid transparent",
+                    borderTop: `12px solid ${T.ink}`,
+                  }}
+                />
+              </div>
+              <p style={{ fontWeight: 700, fontSize: 11.5, color: T.brown, margin: "16px 0 0", lineHeight: 1.5 }}>
+                VAT on the hammer only applies to VAT-able lots (marked "plus
+                VAT" or † on the listing). Premium and platform fees almost
+                always carry VAT. Sound is synthesized in-browser — tap 🔊 to mute.
+              </p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<SpringfieldBidOMatic />);
+</script>
+</body>
+</html>
