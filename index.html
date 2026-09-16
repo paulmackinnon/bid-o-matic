@@ -142,11 +142,11 @@ const Towers = () => (
 );
 
 /* ================= atoms ================= */
-const Chip = ({ on, onClick, children, tiny }) => (
+const Chip = ({ on, onClick, children, tiny, color }) => (
   <button onClick={onClick} aria-pressed={on} style={{
     padding: tiny ? "4px 11px" : "7px 13px", borderRadius: 999, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-    border: `2.5px solid ${C.ink}`, background: on ? C.pink : "#fff",
-    color: C.ink, fontFamily: C.body, fontWeight: 900, fontSize: tiny ? 11.5 : 13,
+    border: `${on ? 3.5 : 2.5}px solid ${C.ink}`, background: color || (on ? C.pink : "#fff"),
+    color: color ? "#fff" : C.ink, fontFamily: C.body, fontWeight: 900, fontSize: tiny ? 11.5 : 13,
     boxShadow: on ? `2px 2px 0 ${C.ink}` : "none", transform: on ? "translateY(-1px)" : "none", transition: "all .12s",
   }}>{children}</button>
 );
@@ -463,7 +463,7 @@ function BidOMatic() {
 
           <div style={{ display: "flex", gap: 5, margin: "9px 0 7px", overflowX: "auto", flexShrink: 0 }}>
             {["all", "watching", "won", "lost"].map((f) => (
-              <Chip key={f} tiny on={filter === f} onClick={() => { setFilter(f); sfx.swipe(); }}>
+              <Chip key={f} tiny on={filter === f} color={f === "all" ? undefined : STATUS[f].col} onClick={() => { setFilter(f); sfx.swipe(); }}>
                 {f === "all" ? "🍩 All" : `${STATUS[f].emoji} ${STATUS[f].label}`}
               </Chip>
             ))}
