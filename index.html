@@ -462,35 +462,57 @@ function BidOMatic() {
                 <p style={{ textAlign: "center", fontWeight: 800, color: C.brown, marginTop: 20, lineHeight: 1.6, fontSize: 13 }}>
                   Nothing here.<br />Go work out a lot, you magnificent bidder.
                 </p>
-              ) : shownLots.map((l) => {
-                const c = compute(l.hammer, l.s); const st = STATUS[l.status || "watching"];
-                return (
-                  <div key={l.id} style={{
-                    display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "#fff",
-                    border: `3px solid ${C.ink}`, borderRadius: 14, marginBottom: 7, boxShadow: `3px 3px 0 rgba(36,26,12,.22)`,
-                    opacity: l.status === "lost" ? .55 : 1,
-                  }}>
-                    <button onClick={() => cycle(l.id)} aria-label={`Status ${st.label}, tap to change`}
-                      style={{ background: st.col, border: `2.5px solid ${C.ink}`, borderRadius: 10, width: 38, height: 38, fontSize: 16, cursor: "pointer", flexShrink: 0, padding: 0 }}>
-                      {st.emoji}
-                    </button>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 900, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: l.status === "lost" ? "line-through" : "none" }}>{l.title}</div>
-                      <div style={{ fontWeight: 800, fontSize: 10.5, color: C.brown, marginTop: 1 }}>
-                        {gbp(l.hammer, true)} hammer{l.url ? ` · ${host(l.url)}` : ""}
+              ) : (() => {
+                const groups = [];
+                const idx = new Map();
+                shownLots.forEach((l) => {
+                  const house = l.preset || "Unlabelled";
+                  if (!idx.has(house)) { idx.set(house, groups.length); groups.push({ house, items: [] }); }
+                  groups[idx.get(house)].items.push(l);
+                });
+                return groups.map((g, gi) => {
+                  const subtotal = g.items.reduce((a, l) => a + compute(l.hammer, l.s).total, 0);
+                  return (
+                    <div key={g.house}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: gi === 0 ? "0 2px 6px" : "16px 2px 6px", paddingTop: gi === 0 ? 0 : 10, borderTop: gi === 0 ? "none" : `2.5px dashed rgba(36,26,12,.25)` }}>
+                        <span style={{ fontFamily: C.disp, fontSize: 15, color: C.blue }}>🏛️ {g.house}</span>
+                        <span style={{ fontWeight: 900, fontSize: 11.5, color: C.brown, flexShrink: 0, marginLeft: 8 }}>
+                          {g.items.length} lot{g.items.length !== 1 ? "s" : ""} · {gbp(subtotal, true)}
+                        </span>
                       </div>
+                      {g.items.map((l) => {
+                        const c = compute(l.hammer, l.s); const st = STATUS[l.status || "watching"];
+                        return (
+                          <div key={l.id} style={{
+                            display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", background: "#fff",
+                            border: `3px solid ${C.ink}`, borderRadius: 14, marginBottom: 7, boxShadow: `3px 3px 0 rgba(36,26,12,.22)`,
+                            opacity: l.status === "lost" ? .55 : 1,
+                          }}>
+                            <button onClick={() => cycle(l.id)} aria-label={`Status ${st.label}, tap to change`}
+                              style={{ background: st.col, border: `2.5px solid ${C.ink}`, borderRadius: 10, width: 38, height: 38, fontSize: 16, cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                              {st.emoji}
+                            </button>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 900, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: l.status === "lost" ? "line-through" : "none" }}>{l.title}</div>
+                              <div style={{ fontWeight: 800, fontSize: 10.5, color: C.brown, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {gbp(l.hammer, true)} hammer · {l.preset || "Unlabelled"}{l.url ? ` · ${host(l.url)}` : ""}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              <div style={{ fontFamily: C.disp, fontSize: 16, lineHeight: 1.2 }}>{gbp(c.total, true)}</div>
+                              <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                                {l.url && <a href={l.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 900, color: C.blue, textDecoration: "none", padding: "6px 4px" }}>open ↗</a>}
+                                <button onClick={() => { persist({ lots: lots.filter((x) => x.id !== l.id) }); sfx.trombone(); }}
+                                  style={{ background: "none", border: "none", color: C.red, fontSize: 10, fontWeight: 900, cursor: "pointer", padding: "6px 4px" }}>bin it</button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontFamily: C.disp, fontSize: 16, lineHeight: 1.2 }}>{gbp(c.total, true)}</div>
-                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                        {l.url && <a href={l.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 900, color: C.blue, textDecoration: "none", padding: "6px 4px" }}>open ↗</a>}
-                        <button onClick={() => { persist({ lots: lots.filter((x) => x.id !== l.id) }); sfx.trombone(); }}
-                          style={{ background: "none", border: "none", color: C.red, fontSize: 10, fontWeight: 900, cursor: "pointer", padding: "6px 4px" }}>bin it</button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
           </div>
  
           {lots.length > 0 && (
