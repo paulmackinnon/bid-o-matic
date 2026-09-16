@@ -358,11 +358,25 @@ function BidOMatic() {
             <Chip on={mode === "budget"} onClick={() => { setMode("budget"); sfx.swipe(); }}>Max bid</Chip>
           </div>
  
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 3, marginBottom: 9, flexShrink: 0 }}>
-            {presets.map((p) => (
-              <Chip key={p.id} tiny on={p.id === activeId} onClick={() => { persist({ activeId: p.id }); sfx.boing(); }}>{p.name}</Chip>
-            ))}
-            <Chip tiny on={false} onClick={() => { setSheet("fees"); sfx.swipe(); }}>+ New</Chip>
+          <div style={{ position: "relative", marginBottom: 9, flexShrink: 0 }}>
+            <select
+              value={activeId}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__new__") { setSheet("fees"); sfx.swipe(); return; }
+                persist({ activeId: v }); sfx.boing();
+              }}
+              style={{
+                width: "100%", boxSizing: "border-box", appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
+                background: "#fff", border: `3px solid ${C.ink}`, borderRadius: 12, padding: "10px 36px 10px 13px",
+                fontFamily: C.body, fontWeight: 900, fontSize: 13.5, color: C.ink, cursor: "pointer",
+                boxShadow: `3px 3px 0 rgba(36,26,12,.3)`,
+              }}
+            >
+              {presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="__new__">+ Add new auction house</option>
+            </select>
+            <span aria-hidden style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontWeight: 900, fontSize: 12, color: C.brown }}>▾</span>
           </div>
  
           <Field label={mode === "cost" ? "Hammer price" : "Your all-in budget"} prefix="£" sfx={sfx}
