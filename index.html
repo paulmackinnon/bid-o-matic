@@ -18,7 +18,7 @@
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
 const { useState, useMemo, useEffect, useRef } = React;
- 
+
 /* ================= storage shim (artifact + standalone) ================= */
 const store = {
   async get(k) {
@@ -35,7 +35,7 @@ const store = {
   },
 };
 const KEY = "bidomatic-v3";
- 
+
 /* ================= Springfield palette ================= */
 const C = {
   sky: "#6fc9f5", sky2: "#a9e3fb", yellow: "#ffd90f", yellowDk: "#e0b400",
@@ -44,11 +44,11 @@ const C = {
   purple: "#7e57c2",
   disp: "'Luckiest Guy',system-ui,cursive", body: "'Nunito',system-ui,sans-serif",
 };
- 
+
 const gbp = (n, short) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: short && n >= 1000 ? 0 : 2 })
     .format(isFinite(n) ? n : 0);
- 
+
 /* ================= maths (unchanged) ================= */
 const BASE = { bpPct: 20, platPct: 4.95, flat: 0, vatRate: 20, vatHammer: false, vatBp: true, vatPlat: true, vatFlat: false };
 const SEED = [
@@ -70,7 +70,7 @@ function maxBid(b, s) {
 }
 const STATUS = { watching: { label: "Watching", col: C.blue, emoji: "👀" }, won: { label: "WON!", col: C.green, emoji: "🏆" }, lost: { label: "Lost", col: C.red, emoji: "💀" } };
 const NEXT = { watching: "won", won: "lost", lost: "watching" };
- 
+
 const QUOTES = [
   "Mmm… unforeseen fees.",
   "Money can be exchanged for goods and services.",
@@ -85,7 +85,7 @@ const QUOTES = [
   "Can't someone else pay the VAT?",
   "Worst. Auction. Ever.",
 ];
- 
+
 /* ================= sound engine ================= */
 function useSfx(muted) {
   const ref = useRef(null);
@@ -117,7 +117,7 @@ function useSfx(muted) {
     swipe: guard(() => note(500, 0, 0.09, "sine", 0.06, 950)),
   };
 }
- 
+
 /* ================= art ================= */
 const Donut = ({ on, size = 26 }) => (
   <svg width={size} height={size} viewBox="0 0 26 26" aria-hidden="true">
@@ -129,7 +129,7 @@ const Donut = ({ on, size = 26 }) => (
     ))}
   </svg>
 );
- 
+
 const Towers = () => (
   <svg viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true"
     style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: 90, opacity: 0.16, pointerEvents: "none" }}>
@@ -140,7 +140,7 @@ const Towers = () => (
     <rect x="232" y="42" width="9" height="22" fill={C.ink} />
   </svg>
 );
- 
+
 /* ================= atoms ================= */
 const Chip = ({ on, onClick, children, tiny }) => (
   <button onClick={onClick} aria-pressed={on} style={{
@@ -150,7 +150,7 @@ const Chip = ({ on, onClick, children, tiny }) => (
     boxShadow: on ? `2px 2px 0 ${C.ink}` : "none", transform: on ? "translateY(-1px)" : "none", transition: "all .12s",
   }}>{children}</button>
 );
- 
+
 const Tab = ({ on, onClick, children }) => (
   <button onClick={onClick} aria-pressed={on} style={{
     flex: 1, padding: "8px 4px", borderRadius: 10, cursor: "pointer", border: "none",
@@ -158,7 +158,7 @@ const Tab = ({ on, onClick, children }) => (
     fontFamily: C.disp, fontSize: 14, letterSpacing: ".02em", transition: "all .15s",
   }}>{children}</button>
 );
- 
+
 const Field = ({ label, value, onChange, prefix, suffix, step = 1, sfx }) => (
   <label style={{ display: "block", minWidth: 0 }}>
     <span style={{ display: "block", fontFamily: C.body, fontWeight: 900, fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: C.blue, marginBottom: 3 }}>{label}</span>
@@ -171,11 +171,11 @@ const Field = ({ label, value, onChange, prefix, suffix, step = 1, sfx }) => (
     </span>
   </label>
 );
- 
+
 const Text = (p) => (
   <input {...p} style={{ width: "100%", boxSizing: "border-box", background: "#fff", border: `3px solid ${C.ink}`, borderRadius: 12, color: C.ink, fontFamily: C.body, fontWeight: 800, fontSize: 14.5, padding: "10px 11px", outline: "none" }} />
 );
- 
+
 const VatToggle = ({ on, onChange, label, sfx }) => (
   <button onClick={() => { onChange(!on); sfx.boing(); }} aria-pressed={on} style={{
     display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "7px 10px",
@@ -187,7 +187,7 @@ const VatToggle = ({ on, onChange, label, sfx }) => (
     <span style={{ fontSize: 11, color: on ? C.pinkDk : "rgba(36,26,12,.45)" }}>{on ? "ON" : "OFF"}</span>
   </button>
 );
- 
+
 /* ================= app ================= */
 function BidOMatic() {
   const [tab, setTab] = useState("calc");
@@ -205,10 +205,11 @@ function BidOMatic() {
   const [url, setUrl] = useState("");
   const [capDraft, setCapDraft] = useState("");
   const [newName, setNewName] = useState("");
+  const [nameDraft, setNameDraft] = useState("");
   const [muted, setMuted] = useState(false);
   const [quote, setQuote] = useState(0);
   const sfx = useSfx(muted);
- 
+
   useEffect(() => {
     (async () => {
       const raw = await store.get(KEY);
@@ -223,7 +224,7 @@ function BidOMatic() {
       setReady(true);
     })();
   }, []);
- 
+
   const persist = (patch) => {
     const next = { presets, activeId, lots, cap, muted, ...patch };
     if (patch.presets) setPresets(patch.presets);
@@ -233,22 +234,34 @@ function BidOMatic() {
     if (patch.muted !== undefined) setMuted(patch.muted);
     store.set(KEY, JSON.stringify(next));
   };
- 
+
   const active = presets.find((p) => p.id === activeId) || presets[0];
   const s = active.s;
   const setFee = (patch) => persist({ presets: presets.map((p) => (p.id === active.id ? { ...p, s: { ...p.s, ...patch } } : p)) });
- 
+
+  useEffect(() => { setNameDraft(active.name); }, [active.id]); // eslint-disable-line
+
+  const renameActive = () => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === active.name) { setNameDraft(active.name); return; }
+    const oldName = active.name;
+    persist({
+      presets: presets.map((p) => (p.id === active.id ? { ...p, name: trimmed } : p)),
+      lots: lots.map((l) => (l.preset === oldName ? { ...l, preset: trimmed } : l)),
+    });
+  };
+
   const H = mode === "cost" ? parseFloat(hammer) || 0 : maxBid(parseFloat(budget) || 0, s);
   const res = useMemo(() => compute(H, s), [H, s]);
   const shown = mode === "cost" ? res.total : H;
   const feesPct = H > 0 ? ((res.total - H) / H) * 100 : 0;
- 
+
   const shownLots = lots.filter((l) => filter === "all" || (l.status || "watching") === filter);
   const committed = lots.filter((l) => (l.status || "watching") === "won").reduce((a, l) => a + compute(l.hammer, l.s).total, 0);
   const exposure = lots.filter((l) => (l.status || "watching") !== "lost").reduce((a, l) => a + compute(l.hammer, l.s).total, 0);
   const overCap = cap > 0 && exposure > cap;
   const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
- 
+
   /* reactive sound on total change */
   const lastTotal = useRef(0);
   useEffect(() => {
@@ -260,13 +273,13 @@ function BidOMatic() {
     }, 650);
     return () => clearTimeout(id);
   }, [res.total]); // eslint-disable-line
- 
+
   const wasOver = useRef(false);
   useEffect(() => {
     if (overCap && !wasOver.current) sfx.klaxon();
     wasOver.current = overCap;
   }, [overCap]); // eslint-disable-line
- 
+
   const addLot = () => {
     const h = mode === "cost" ? parseFloat(hammer) || 0 : H;
     persist({ lots: [...lots, { id: Date.now(), title: title.trim() || `Lot ${lots.length + 1}`, url: url.trim(), hammer: h, status: "watching", preset: active.name, s: { ...s } }] });
@@ -289,12 +302,12 @@ function BidOMatic() {
     a.download = `lots-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   };
- 
+
   const BD = { position: "fixed", inset: 0, background: "rgba(36,26,12,.55)", zIndex: 30 };
   const SH = { position: "absolute", left: 0, right: 0, bottom: 0, background: C.cream, borderRadius: "22px 22px 0 0", border: `4px solid ${C.ink}`, borderBottom: "none", padding: "16px 16px calc(16px + env(safe-area-inset-bottom))", maxHeight: "92%", overflowY: "auto", animation: "rise .22s ease" };
   const lbl = { display: "block", fontFamily: C.body, fontWeight: 900, fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: C.blue, marginBottom: 3 };
   const bigBtn = { width: "100%", padding: 12, borderRadius: 14, border: `3px solid ${C.ink}`, background: C.yellow, color: C.ink, fontFamily: C.disp, fontSize: 17, cursor: "pointer", boxShadow: `3px 3px 0 ${C.ink}` };
- 
+
   return (
     <div style={{
       height: "100dvh", overflow: "hidden", position: "relative", display: "flex", flexDirection: "column",
@@ -315,7 +328,7 @@ function BidOMatic() {
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
       `}</style>
- 
+
       {/* clouds */}
       {[0, 1, 2].map((i) => (
         <div key={i} aria-hidden style={{
@@ -325,7 +338,7 @@ function BidOMatic() {
         }} />
       ))}
       <Towers />
- 
+
       {/* ---------- header ---------- */}
       <div style={{ padding: "calc(14px + env(safe-area-inset-top)) 14px 8px", flexShrink: 0, position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 16 }}>
@@ -343,13 +356,13 @@ function BidOMatic() {
             </button>
           </div>
         </div>
- 
+
         <div style={{ display: "flex", gap: 3, background: "rgba(255,255,255,.75)", border: `3px solid ${C.ink}`, borderRadius: 13, padding: 3, marginTop: 9, boxShadow: `3px 3px 0 rgba(36,26,12,.25)` }}>
           <Tab on={tab === "calc"} onClick={() => { setTab("calc"); sfx.swipe(); }}>Calculator</Tab>
           <Tab on={tab === "basket"} onClick={() => { setTab("basket"); sfx.swipe(); }}>Basket{lots.length ? ` (${lots.length})` : ""}</Tab>
         </div>
       </div>
- 
+
       {/* ---------- CALC ---------- */}
       {tab === "calc" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 14px calc(14px + env(safe-area-inset-bottom))", minHeight: 0, position: "relative" }}>
@@ -357,7 +370,7 @@ function BidOMatic() {
             <Chip on={mode === "cost"} onClick={() => { setMode("cost"); sfx.swipe(); }}>What'll it cost?</Chip>
             <Chip on={mode === "budget"} onClick={() => { setMode("budget"); sfx.swipe(); }}>Max bid</Chip>
           </div>
- 
+
           <div style={{ position: "relative", marginBottom: 9, flexShrink: 0 }}>
             <select
               value={activeId}
@@ -378,10 +391,10 @@ function BidOMatic() {
             </select>
             <span aria-hidden style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontWeight: 900, fontSize: 12, color: C.brown }}>▾</span>
           </div>
- 
+
           <Field label={mode === "cost" ? "Hammer price" : "Your all-in budget"} prefix="£" sfx={sfx}
             value={mode === "cost" ? hammer : budget} onChange={mode === "cost" ? setHammer : setBudget} />
- 
+
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: 0, padding: "4px 0" }}>
             <div style={{ fontFamily: C.body, fontWeight: 900, fontSize: 10.5, letterSpacing: ".12em", textTransform: "uppercase", color: C.brown }}>
               {mode === "cost" ? "You'll actually pay" : "Stop bidding at"}
@@ -394,7 +407,7 @@ function BidOMatic() {
             <div style={{ fontWeight: 900, fontSize: 12, color: C.brown, marginTop: 3 }}>
               +{feesPct.toFixed(1)}% in fees{feesPct > 35 ? " · D'OH!" : ""}
             </div>
- 
+
             <div style={{ display: "flex", width: "100%", height: 12, borderRadius: 999, overflow: "hidden", marginTop: 11, border: `2.5px solid ${C.ink}`, background: "#fff" }}>
               {[[H, C.yellow], [res.bpAmt, C.purple], [res.platAmt, "#ff9b3d"], [res.flat, C.brown], [res.vat, C.pink]].map(([v, col], i) => (
                 <div key={i} style={{ width: `${res.total > 0 ? (v / res.total) * 100 : 0}%`, background: col, transition: "width .25s" }} />
@@ -407,20 +420,20 @@ function BidOMatic() {
                 </span>
               ))}
             </div>
- 
+
             {/* speech bubble */}
             <div style={{ position: "relative", marginTop: 12, background: "#fff", border: `3px solid ${C.ink}`, borderRadius: 14, padding: "7px 12px", fontWeight: 800, fontSize: 12.5, fontStyle: "italic", maxWidth: "100%", textAlign: "center" }}>
               “{QUOTES[quote]}”
               <span style={{ position: "absolute", bottom: -11, left: 22, width: 0, height: 0, borderLeft: "9px solid transparent", borderRight: "9px solid transparent", borderTop: `11px solid ${C.ink}` }} />
             </div>
           </div>
- 
+
           <button onClick={() => { setSheet("add"); sfx.swipe(); }} style={{ ...bigBtn, background: C.pink, flexShrink: 0 }}>
             🛒 Add to basket
           </button>
         </div>
       )}
- 
+
       {/* ---------- BASKET ---------- */}
       {tab === "basket" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 14px calc(14px + env(safe-area-inset-bottom))", minHeight: 0, position: "relative" }}>
@@ -447,7 +460,7 @@ function BidOMatic() {
               {gbp(committed, true)} committed on won lots{overCap ? ` · ${gbp(exposure - cap, true)} OVER. D'oh!` : ""}
             </div>
           </button>
- 
+
           <div style={{ display: "flex", gap: 5, margin: "9px 0 7px", overflowX: "auto", flexShrink: 0 }}>
             {["all", "watching", "won", "lost"].map((f) => (
               <Chip key={f} tiny on={filter === f} onClick={() => { setFilter(f); sfx.swipe(); }}>
@@ -455,7 +468,7 @@ function BidOMatic() {
               </Chip>
             ))}
           </div>
- 
+
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {!ready ? <p style={{ textAlign: "center", fontWeight: 800, color: C.brown, marginTop: 20 }}>Loading…</p>
               : shownLots.length === 0 ? (
@@ -514,13 +527,13 @@ function BidOMatic() {
                 });
               })()}
           </div>
- 
+
           {lots.length > 0 && (
             <button onClick={exportCsv} style={{ ...bigBtn, background: "#fff", fontSize: 14, marginTop: 7, flexShrink: 0 }}>📄 Export CSV</button>
           )}
         </div>
       )}
- 
+
       {/* ---------- FEES SHEET ---------- */}
       {sheet === "fees" && (
         <div style={BD} onClick={() => setSheet(null)}>
@@ -539,8 +552,17 @@ function BidOMatic() {
                 setNewName(""); sfx.woohoo();
               }} style={{ padding: "0 15px", borderRadius: 12, border: `3px solid ${C.ink}`, background: C.green, color: "#fff", fontFamily: C.disp, fontSize: 15, cursor: "pointer", flexShrink: 0 }}>Save</button>
             </div>
- 
-            <div style={{ fontWeight: 900, fontSize: 12, color: C.brown, marginBottom: 7 }}>Editing: {active.name}</div>
+
+            <div style={{ marginBottom: 10 }}>
+              <span style={lbl}>Editing this auction house</span>
+              <Text
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={renameActive}
+                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                placeholder="Auction house name"
+              />
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 10 }}>
               <Field label="Buyer's premium" suffix="%" step={.5} value={s.bpPct} sfx={sfx} onChange={(v) => setFee({ bpPct: parseFloat(v) || 0 })} />
               <Field label="Platform fee" suffix="%" step={.05} value={s.platPct} sfx={sfx} onChange={(v) => setFee({ platPct: parseFloat(v) || 0 })} />
@@ -563,7 +585,7 @@ function BidOMatic() {
           </div>
         </div>
       )}
- 
+
       {/* ---------- ADD SHEET ---------- */}
       {sheet === "add" && (
         <div style={BD} onClick={() => setSheet(null)}>
@@ -585,7 +607,7 @@ function BidOMatic() {
           </div>
         </div>
       )}
- 
+
       {/* ---------- CAP SHEET ---------- */}
       {sheet === "cap" && (
         <div style={BD} onClick={() => setSheet(null)}>
@@ -603,10 +625,8 @@ function BidOMatic() {
     </div>
   );
 }
- 
+
 ReactDOM.createRoot(document.getElementById("root")).render(<BidOMatic />);
 </script>
 </body>
 </html>
- 
-
